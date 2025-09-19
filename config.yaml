@@ -1,0 +1,5 @@
+logfile: "/var/log/syslog"
+filters:
+  - "ERROR"
+  - "WARNING"
+sleep_interval: 1s

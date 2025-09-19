@@ -9,57 +9,85 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
-func main() {
-	if len(os.Args) < 2 {
-		fmt.Println("Usage: go run main.go <logfile>")
-		return
-	}
+type Config struct {
+	LogFile       string   `yaml:"logfile"`
+	Filters       []string `yaml:"filters"`
+	SleepInterval string   `yaml:"sleep_interval"`
+}
 
-	logFile := os.Args[1]
-	file, err := os.Open(logFile)
+func loadConfig(path string) (*Config, error) {
+	file, err := os.Open(path)
 	if err != nil {
-		log.Fatalf("Failed to open file: %v", err)
-		os.Exit(1)
+		return nil, err
 	}
 	defer file.Close()
 
-	// Move to the end of file
+	var cfg Config
+	decoder := yaml.NewDecoder(file)
+	err = decoder.Decode(&cfg)
+	if err != nil {
+		return nil, err
+	}
+	return &cfg, nil
+}
+
+func main() {
+	cfg, err := loadConfig("config.yaml")
+	if err != nil {
+		log.Fatalf("Error loading config: %v", err)
+	}
+
+	file, err := os.Open(cfg.LogFile)
+	if err != nil {
+		log.Fatalf("Failed to open file: %v", err)
+	}
+	defer file.Close()
+
 	stat, _ := file.Stat()
 	offset := stat.Size()
 	file.Seek(offset, 0)
 
-	// Setup graceful shutdown
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 
-	errorCount, warnCount := 0, 0
+	filterCounts := make(map[string]int)
 
-	fmt.Printf("Watching %s ...\n", logFile)
+	// Parse interval
+	interval, _ := time.ParseDuration(cfg.SleepInterval)
+
+	fmt.Printf("Watching %s ...\n", cfg.LogFile)
 
 	for {
 		select {
 		case <-sig:
 			fmt.Println("\nShutting down...")
-			fmt.Printf("Summary: %d errors, %d warnings\n", errorCount, warnCount)
+			for f, count := range filterCounts {
+				fmt.Printf("%s: %d\n", f, count)
+			}
 			return
 		default:
 			reader := bufio.NewReader(file)
 			line, err := reader.ReadString('\n')
 			if err == nil {
 				line = strings.TrimSpace(line)
-				if strings.Contains(line, "ERROR") {
-					fmt.Printf("[ERROR] %s\n", line)
-					errorCount++
-				} else if strings.Contains(line, "WARNING") {
-					fmt.Printf("[WARN]  %s\n", line)
-					warnCount++
-				} else {
+				matched := false
+				for _, f := range cfg.Filters {
+					if strings.Contains(line, f) {
+						fmt.Printf("[%s] %s\n", f, line)
+						filterCounts[f]++
+						matched = true
+						break
+					}
+				}
+				if !matched {
 					fmt.Println(line)
 				}
 			} else {
-				time.Sleep(1 * time.Second) // wait before checking again
+				time.Sleep(interval)
 			}
 		}
 	}
