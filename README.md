@@ -40,7 +40,7 @@ sleep_interval: 1s           # Interval to check for new logs
 
 ### Clone the repo
 ```bash
-git clone https://github.com/your-username/log-watcher.git
+git clone https://github.com/saitama-op/log-watcher.git
 cd log-watcher
 ```
 
