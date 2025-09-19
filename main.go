@@ -21,6 +21,7 @@ func main() {
 	file, err := os.Open(logFile)
 	if err != nil {
 		log.Fatalf("Failed to open file: %v", err)
+		os.Exit(1)
 	}
 	defer file.Close()
 
